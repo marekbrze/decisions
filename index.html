@@ -172,11 +172,6 @@ kbd {
 .sub { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
 .sub .btn { height: 36px; font-size: 14px; }
 .sub kbd { margin-left: 2px; }
-.notice {
-  margin: 32px 0 0; padding: 16px 18px; border-radius: 12px; border: 1px dashed var(--line);
-  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 14px; color: var(--muted);
-}
-.notice .btn { height: 36px; font-size: 14px; }
 
 /* results */
 .ranking { list-style: none; margin: 24px 0 0; padding: 0; }
@@ -190,6 +185,13 @@ kbd {
 .ranking li:first-child .bar span { background: var(--bar-top); }
 .score { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 17px; text-align: right; min-width: 52px; }
 .score small { display: block; font-size: 11px; font-weight: 400; color: var(--faint); }
+
+.section { margin: 28px 0 8px; font-size: 13px; color: var(--muted); }
+.unranked { list-style: none; margin: 0; padding: 0; }
+.unranked li { padding: 10px 0 10px 42px; border-bottom: 1px dashed var(--line); color: var(--muted); overflow-wrap: anywhere; }
+.unranked li:first-child { border-top: 1px dashed var(--line); }
+.finish { text-align: center; padding-top: 24px; }
+.finish .actions { justify-content: center; }
 
 /* footer */
 footer { padding: 24px 0 32px; font-size: 13px; color: var(--faint); }
@@ -241,8 +243,6 @@ footer .links { display: flex; gap: 14px; }
   /* ---------- storage ---------- */
   const KEY = 'priorities.v1';
   const LEGACY_KEY = 'priorytety.v1';
-  const START = 1000;
-  const K = 32;
 
   let db = load();
 
@@ -263,61 +263,155 @@ footer .links { display: flex; gap: 14px; }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = s => document.querySelector(s);
 
-  /* ---------- elo ---------- */
-  function compute(list) {
-    const r = {}, s = {};
-    for (const it of list.items) { r[it.id] = START; s[it.id] = { w: 0, l: 0, d: 0, n: 0 }; }
-    for (const h of list.history) {
-      if (!(h.a in r) || !(h.b in r)) continue;
-      const ea = 1 / (1 + Math.pow(10, (r[h.b] - r[h.a]) / 400));
-      const sa = h.w === 'a' ? 1 : h.w === 'b' ? 0 : 0.5;
-      const delta = K * (sa - ea);
-      r[h.a] += delta; r[h.b] -= delta;
-      s[h.a].n++; s[h.b].n++;
-      if (sa === 1) { s[h.a].w++; s[h.b].l++; }
-      else if (sa === 0) { s[h.b].w++; s[h.a].l++; }
-      else { s[h.a].d++; s[h.b].d++; }
-    }
-    return { r, s };
-  }
-
-  function target(list) {
-    const n = list.items.length;
-    if (n < 2) return 0;
-    return Math.max(n - 1, Math.ceil(n * Math.log2(n)));
-  }
+  /* ---------- ranking engine ----------
+     1. Binary insertion: each item is placed into the already sorted list by
+        asking "above or below the middle?" — close to the log2(n!) minimum.
+        Answers implied by earlier ones (A > B > C ⇒ A > C) are never asked.
+     2. Double-check: every pair of neighbours gets one direct comparison;
+        an inconsistent answer swaps them.
+     3. Scores: Bradley–Terry strengths fitted on all answers (order-independent),
+        shown on an Elo-like scale (1000 = average) and kept monotonic with the ranking.
+     The whole state is replayed from the answer history, so undo, deleting
+     and adding items are always consistent. */
 
   const pairKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+  const log2ceil = k => k <= 1 ? 0 : Math.ceil(Math.log2(k));
 
-  function nextPair(list) {
-    const items = list.items;
-    if (items.length < 2) return null;
-    const { r, s } = compute(list);
-    const seen = new Map();
-    for (const h of list.history) { const k = pairKey(h.a, h.b); seen.set(k, (seen.get(k) || 0) + 1); }
-    const last = list.history[list.history.length - 1];
-    const lastSet = new Set(last && items.length >= 4 ? [last.a, last.b] : []);
+  function solve(list) {
+    const ids = list.items.map(i => i.id);
+    const alive = new Set(ids);
+    const direct = new Map();   // pair -> winner id, or null for "about equal" (latest answer wins)
+    for (const h of list.history) {
+      if (!alive.has(h.a) || !alive.has(h.b) || h.a === h.b) continue;
+      direct.set(pairKey(h.a, h.b), h.w === 'd' ? null : h.w === 'a' ? h.a : h.b);
+    }
+    const beats = new Map();
+    for (const [k, w] of direct) {
+      if (w === null) continue;
+      const [x, y] = k.split('|');
+      if (!beats.has(w)) beats.set(w, new Set());
+      beats.get(w).add(w === x ? y : x);
+    }
+    const reaches = (from, to) => {
+      const seen = new Set([from]), stack = [from];
+      while (stack.length) {
+        for (const n of beats.get(stack.pop()) || []) {
+          if (n === to) return true;
+          if (!seen.has(n)) { seen.add(n); stack.push(n); }
+        }
+      }
+      return false;
+    };
+    // 1 = x above y, -1 = below, 0 = equal, undefined = unknown
+    const cmp = (x, y) => {
+      const k = pairKey(x, y);
+      if (direct.has(k)) { const w = direct.get(k); return w === null ? 0 : w === x ? 1 : -1; }
+      const up = reaches(x, y), down = reaches(y, x);
+      return up && !down ? 1 : down && !up ? -1 : undefined;
+    };
 
-    // first: fewest comparisons, avoid items from the previous pair
-    let a = null, best = Infinity;
-    for (const it of items) {
-      const score = s[it.id].n + Math.random() * 0.9 + (lastSet.has(it.id) ? 100 : 0);
-      if (score < best) { best = score; a = it.id; }
+    // 1. binary insertion
+    const sorted = [];
+    let pending = null, i = 0;
+    for (; i < ids.length; i++) {
+      const x = ids[i];
+      let lo = 0, hi = sorted.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        const c = cmp(x, sorted[mid]);
+        if (c === undefined) { pending = { pair: [x, sorted[mid]], left: log2ceil(hi - lo + 1) }; break; }
+        if (c > 0) hi = mid; else if (c < 0) lo = mid + 1; else lo = hi = mid + 1;
+      }
+      if (pending) break;
+      sorted.splice(lo, 0, x);
     }
-    // second: similar rating, rarely compared pair
-    let b = null; best = Infinity;
-    for (const it of items) {
-      if (it.id === a) continue;
-      const k = pairKey(a, it.id);
-      const score = Math.abs(r[a] - r[it.id]) / 40
-        + (seen.get(k) || 0) * 4
-        + s[it.id].n * 0.35
-        + (lastSet.has(it.id) ? 6 : 0)
-        + (last && k === pairKey(last.a, last.b) ? 50 : 0)
-        + Math.random() * 1.5;
-      if (score < best) { best = score; b = it.id; }
+    const unranked = pending ? ids.slice(i) : [];
+
+    // 2. double-check neighbours
+    let check = null, unchecked = 0;
+    if (!pending) {
+      let j = 0, guard = 0;
+      while (j < sorted.length - 1 && guard++ < 50000) {
+        const a = sorted[j], b = sorted[j + 1], k = pairKey(a, b);
+        if (!direct.has(k)) { check = [a, b]; break; }
+        if (direct.get(k) === b) { sorted[j] = b; sorted[j + 1] = a; j = Math.max(0, j - 1); }
+        else j++;
+      }
+      for (let m = 0; m < sorted.length - 1; m++) if (!direct.has(pairKey(sorted[m], sorted[m + 1]))) unchecked++;
     }
-    return Math.random() < 0.5 ? [a, b] : [b, a];
+
+    // remaining questions (estimate)
+    let left = 0;
+    if (pending) {
+      left = pending.left;
+      for (let size = sorted.length + 1; size < ids.length; size++) left += log2ceil(size + 1);
+    } else left = unchecked;
+
+    return {
+      phase: pending ? 'sort' : check ? 'check' : 'done',
+      pair: pending ? pending.pair : check,
+      sorted, unranked, left
+    };
+  }
+
+  function records(list) {
+    const s = {};
+    for (const it of list.items) s[it.id] = { w: 0, l: 0, d: 0 };
+    for (const h of list.history) {
+      if (!s[h.a] || !s[h.b]) continue;
+      if (h.w === 'a') { s[h.a].w++; s[h.b].l++; }
+      else if (h.w === 'b') { s[h.b].w++; s[h.a].l++; }
+      else { s[h.a].d++; s[h.b].d++; }
+    }
+    return s;
+  }
+
+  // Bradley–Terry via MM iterations; every item also plays one win + one loss
+  // against a virtual average opponent (strength 1), which keeps scores finite.
+  function scores(list, order) {
+    const n = order.length, idx = new Map(order.map((id, i) => [id, i]));
+    const wins = new Float64Array(n).fill(1);
+    const games = [];
+    for (const h of list.history) {
+      const a = idx.get(h.a), b = idx.get(h.b);
+      if (a === undefined || b === undefined) continue;
+      games.push([a, b]);
+      if (h.w === 'a') wins[a] += 1; else if (h.w === 'b') wins[b] += 1; else { wins[a] += .5; wins[b] += .5; }
+    }
+    let p = new Float64Array(n).fill(1);
+    for (let it = 0; it < 300; it++) {
+      const den = new Float64Array(n);
+      for (let i = 0; i < n; i++) den[i] = 2 / (p[i] + 1);
+      for (const [a, b] of games) { const t = 1 / (p[a] + p[b]); den[a] += t; den[b] += t; }
+      let delta = 0;
+      const next = new Float64Array(n);
+      for (let i = 0; i < n; i++) { next[i] = wins[i] / den[i]; delta = Math.max(delta, Math.abs(next[i] - p[i])); }
+      p = next;
+      if (delta < 1e-9) break;
+    }
+    // Elo-like scale, then pool-adjacent-violators so scores never contradict the order
+    const raw = Array.from(p, v => 1000 + 400 * Math.log10(v));
+    const blocks = [];
+    for (const v of raw) {
+      blocks.push({ sum: v, cnt: 1 });
+      while (blocks.length > 1) {
+        const b = blocks[blocks.length - 1], a = blocks[blocks.length - 2];
+        if (b.sum / b.cnt <= a.sum / a.cnt) break;
+        a.sum += b.sum; a.cnt += b.cnt; blocks.pop();
+      }
+    }
+    const out = [];
+    for (const b of blocks) for (let k = 0; k < b.cnt; k++) out.push(b.sum / b.cnt);
+    return out;
+  }
+
+  function ranking(list) {
+    const st = solve(list), rec = records(list);
+    const byId = new Map(list.items.map(it => [it.id, it]));
+    const sc = scores(list, st.sorted);
+    const ranked = st.sorted.map((id, i) => ({ ...byId.get(id), score: sc[i], s: rec[id] }));
+    const unranked = st.unranked.map(id => byId.get(id));
+    return { ...st, ranked, unranked };
   }
 
   /* ---------- routing ---------- */
@@ -388,7 +482,7 @@ footer .links { display: flex; gap: 14px; }
         </ul>` : `
         <div class="empty">
           <p>Write down tasks, ideas or goals.</p>
-          <p>Then compare them in pairs — an Elo rating sorts them from most important down.</p>
+          <p>Then pick the more important one from pairs — a few quick choices sort the whole list.</p>
         </div>`}
       <div class="actions"><button class="btn primary" data-act="new-list">New list</button></div>`;
   }
@@ -396,6 +490,8 @@ footer .links { display: flex; gap: 14px; }
   function renderEdit(list, opts) {
     const n = list.items.length;
     const started = list.history.length > 0;
+    const st = n >= 2 ? solve(list) : null;
+    const finished = started && st && st.phase === 'done';
     app.innerHTML = `
       <div class="crumbs"><a href="#/">${ICON_BACK}<span>Lists</span></a></div>
       <input class="title" id="title" value="${esc(list.name)}" placeholder="List name" aria-label="List name" autocomplete="off">
@@ -412,8 +508,10 @@ footer .links { display: flex; gap: 14px; }
       </ol>
       ${n ? `<div class="count">${nItems(n)}${started ? ' · ' + nComps(list.history.length) : ''}</div>` : `<p class="hint">Tip: paste several lines at once — each becomes a separate item.</p>`}
       <div class="actions">
-        <a class="btn primary" href="#/l/${list.id}/compare" ${n < 2 ? 'aria-disabled="true" tabindex="-1"' : ''}>${started ? 'Continue comparing' : 'Start prioritizing'}</a>
-        ${started ? `<a class="btn" href="#/l/${list.id}/results">Results</a>` : ''}
+        ${finished
+          ? `<a class="btn primary" href="#/l/${list.id}/results">See results</a>`
+          : `<a class="btn primary" href="#/l/${list.id}/compare" ${n < 2 ? 'aria-disabled="true" tabindex="-1"' : ''}>${started ? 'Continue comparing' : 'Start prioritizing'}</a>
+             ${started ? `<a class="btn" href="#/l/${list.id}/results">Results</a>` : ''}`}
       </div>
       ${n === 1 ? '<p class="hint">Add at least 2 items to start.</p>' : ''}`;
 
@@ -422,21 +520,42 @@ footer .links { display: flex; gap: 14px; }
     if (el && (opts.focus || n === 0)) { el.focus(); if (focusId === 'title') el.select(); }
   }
 
+  function syncPair(list) {
+    const st = solve(list);
+    if (!st.pair) { pair = null; return st; }
+    const same = pair && pairList === list.id && pairKey(pair[0], pair[1]) === pairKey(st.pair[0], st.pair[1]);
+    if (!same) { pair = Math.random() < 0.5 ? [st.pair[0], st.pair[1]] : [st.pair[1], st.pair[0]]; pairList = list.id; }
+    return st;
+  }
+
   function renderCompare(list, opts) {
     if (list.items.length < 2) { go(`#/l/${list.id}`); return; }
-    const ids = new Set(list.items.map(i => i.id));
-    if (!pair || pairList !== list.id || !ids.has(pair[0]) || !ids.has(pair[1])) { pair = nextPair(list); pairList = list.id; }
-    const byId = id => list.items.find(i => i.id === id);
-    const [a, b] = pair.map(byId);
-    const done = list.history.length, tgt = target(list);
-    const pct = Math.min(100, Math.round(done / tgt * 100));
-    app.innerHTML = `
+    const st = syncPair(list);
+    const done = list.history.length, total = done + st.left;
+    const pct = total ? Math.round(done / total * 100) : 100;
+    const head = `
       <div class="crumbs">
         <a href="#/l/${list.id}">${ICON_BACK}<span>${esc(list.name || 'Untitled')}</span></a>
-        <span class="progress-meta" title="Comparisons done / recommended">${done} / ${tgt}</span>
+        <span class="progress-meta" title="Answered / estimated total">${st.pair ? `${done} / ~${total}` : done}</span>
       </div>
-      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${tgt}" aria-valuenow="${Math.min(done, tgt)}"><span style="width:${pct}%"></span></div>
-      <p class="q">Which matters more?</p>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
+
+    if (!st.pair) {
+      app.innerHTML = head + `
+        <div class="finish ${opts.anim ? 'duel-anim' : ''}">
+          <h1>Your ranking is ready</h1>
+          <p class="lead">${nComps(done)}. Add new items anytime — you'll only be asked about them.</p>
+          <div class="actions">
+            <a class="btn primary" href="#/l/${list.id}/results">See results</a>
+            <button class="btn ghost" data-act="undo" ${done ? '' : 'disabled'}>Undo last answer <kbd>Z</kbd></button>
+          </div>
+        </div>`;
+      return;
+    }
+    const byId = id => list.items.find(i => i.id === id);
+    const [a, b] = pair.map(byId);
+    app.innerHTML = head + `
+      <p class="q">${st.phase === 'check' ? 'Quick double-check — which matters more?' : 'Which matters more?'}</p>
       <div class="duel ${opts.anim ? 'duel-anim' : ''}" id="duel">
         <button class="card" data-act="pick" data-side="0">${esc(a.text)}<kbd>←</kbd></button>
         <span class="or">or</span>
@@ -446,44 +565,48 @@ footer .links { display: flex; gap: 14px; }
         <button class="btn ghost" data-act="draw">About equal <kbd>↓</kbd></button>
         <button class="btn ghost" data-act="undo" ${done ? '' : 'disabled'}>Undo <kbd>Z</kbd></button>
       </div>
-      ${done >= tgt
-        ? `<div class="notice"><span>The ranking is stable now. Keep comparing for extra precision.</span><a class="btn primary" href="#/l/${list.id}/results">See results</a></div>`
-        : `<div class="sub"><a class="btn ghost" href="#/l/${list.id}/results">Finish and see results</a></div>`}`;
-  }
-
-  function sortedResults(list) {
-    const { r, s } = compute(list);
-    return list.items
-      .map(it => ({ ...it, r: r[it.id], s: s[it.id] }))
-      .sort((x, y) => y.r - x.r || y.s.w - x.s.w || x.text.localeCompare(y.text));
+      <div class="sub"><a class="btn ghost" href="#/l/${list.id}/results">${done ? 'Stop and see results' : 'See list'}</a></div>`;
   }
 
   function renderResults(list) {
-    const rows = sortedResults(list);
-    const max = Math.max(...rows.map(x => x.r), START), min = Math.min(...rows.map(x => x.r), START);
-    const span = max - min || 1;
+    const rk = ranking(list);
+    const rows = rk.ranked;
+    const max = Math.max(...rows.map(x => x.score)), min = Math.min(...rows.map(x => x.score));
+    const span = max - min;
+    const width = x => span < 1e-6 ? 100 : Math.max(3, Math.round((x.score - min) / span * 100));
+    const done = list.history.length;
+    let lead;
+    if (!done) lead = 'No comparisons yet — start prioritizing to sort this list.';
+    else if (rk.phase === 'sort') lead = `Based on ${nComps(done)}. ${nItems(rk.unranked.length)} still to place.`;
+    else if (rk.phase === 'check') lead = `Based on ${nComps(done)}. A few quick double-checks left.`;
+    else lead = `Based on ${nComps(done)}.`;
+    const showRanked = done > 0 && rows.length > 1;
     app.innerHTML = `
       <div class="crumbs">
         <a href="#/l/${list.id}">${ICON_BACK}<span>${esc(list.name || 'Untitled')}</span></a>
       </div>
       <h1>Results</h1>
-      <p class="lead">${list.history.length ? `Based on ${nComps(list.history.length)}.` : 'No comparisons yet — every item has the starting score.'}</p>
+      <p class="lead">${lead}</p>
+      ${showRanked ? `
       <ol class="ranking">
         ${rows.map((x, i) => `
           <li>
             <span class="rank">${i + 1}</span>
             <div>
               <div class="text">${esc(x.text)}</div>
-              <div class="bar"><span style="width:${Math.max(3, Math.round((x.r - min) / span * 100))}%"></span></div>
+              <div class="bar"><span style="width:${width(x)}%"></span></div>
             </div>
-            <span class="score" title="${x.s.w} wins · ${x.s.l} losses · ${x.s.d} draws">${Math.round(x.r)}<small>${x.s.w}–${x.s.l}${x.s.d ? '–' + x.s.d : ''}</small></span>
+            <span class="score" title="${x.s.w} wins · ${x.s.l} losses · ${x.s.d} ties">${Math.round(x.score)}<small>${x.s.w}–${x.s.l}${x.s.d ? '–' + x.s.d : ''}</small></span>
           </li>`).join('')}
-      </ol>
+      </ol>` : ''}
+      ${(showRanked ? rk.unranked : list.items).length ? `
+      ${showRanked ? '<p class="section">Not placed yet</p>' : ''}
+      <ul class="unranked">${(showRanked ? rk.unranked : list.items).map(x => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}
       <div class="actions">
-        ${list.items.length >= 2 ? `<a class="btn primary" href="#/l/${list.id}/compare">Keep comparing</a>` : ''}
-        <button class="btn" data-act="copy">Copy list</button>
+        ${list.items.length >= 2 && rk.phase !== 'done' ? `<a class="btn primary" href="#/l/${list.id}/compare">${done ? 'Continue' : 'Start prioritizing'}</a>` : ''}
+        ${showRanked ? '<button class="btn" data-act="copy">Copy list</button>' : ''}
         <span class="spacer"></span>
-        ${list.history.length ? '<button class="btn ghost danger" data-act="reset">Reset ranking</button>' : ''}
+        ${done ? '<button class="btn ghost danger" data-act="reset">Reset ranking</button>' : ''}
       </div>`;
   }
 
@@ -509,7 +632,7 @@ footer .links { display: flex; gap: 14px; }
     list.history.push({ a: pair[0], b: pair[1], w, t: Date.now() });
     touch(list);
     setTimeout(() => {
-      pair = nextPair(list); pairList = list.id; busy = false;
+      busy = false;
       render({ anim: true });
     }, 160);
   }
@@ -566,8 +689,8 @@ footer .links { display: flex; gap: 14px; }
     else if (act === 'draw') pick('draw');
     else if (act === 'undo') undo();
     else if (act === 'copy' && list) {
-      const rows = sortedResults(list);
-      const txt = (list.name ? list.name + '\n\n' : '') + rows.map((x, i) => `${i + 1}. ${x.text} — ${Math.round(x.r)}`).join('\n');
+      const rows = ranking(list).ranked;
+      const txt = (list.name ? list.name + '\n\n' : '') + rows.map((x, i) => `${i + 1}. ${x.text} — ${Math.round(x.score)}`).join('\n');
       toast(await copyText(txt) ? 'Copied to clipboard' : 'Could not copy');
     }
     else if (act === 'reset' && list) {
