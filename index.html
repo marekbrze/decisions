@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Priorities</title>
+<meta name="description" content="List your things and prioritize them by comparing pairs (Elo rating).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231c1917'/%3E%3Crect x='8' y='8' width='16' height='3' rx='1.5' fill='%23fff'/%3E%3Crect x='8' y='14.5' width='11' height='3' rx='1.5' fill='%23fff' opacity='.7'/%3E%3Crect x='8' y='21' width='6' height='3' rx='1.5' fill='%23fff' opacity='.45'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --text: #1c1917;
+  --muted: #78716c;
+  --faint: #a8a29e;
+  --line: #e7e5e4;
+  --hover: #f5f5f4;
+  --accent: #1c1917;
+  --accent-text: #fafaf9;
+  --bar: #d6d3d1;
+  --bar-top: #1c1917;
+  --danger: #b91c1c;
+  --focus: #2563eb;
+  --shadow: 0 1px 2px rgba(28,25,23,.04), 0 4px 16px rgba(28,25,23,.04);
+  --radius: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0a09;
+    --surface: #171412;
+    --text: #f5f5f4;
+    --muted: #a8a29e;
+    --faint: #6b625c;
+    --line: #2a2522;
+    --hover: #211d1a;
+    --accent: #f5f5f4;
+    --accent-text: #0c0a09;
+    --bar: #3a3431;
+    --bar-top: #f5f5f4;
+    --danger: #f87171;
+    --focus: #60a5fa;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0a09; --surface: #171412; --text: #f5f5f4; --muted: #a8a29e; --faint: #6b625c;
+  --line: #2a2522; --hover: #211d1a; --accent: #f5f5f4; --accent-text: #0c0a09; --bar: #3a3431;
+  --bar-top: #f5f5f4; --danger: #f87171; --focus: #60a5fa;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25); color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+
+.wrap { width: 100%; max-width: 640px; margin: 0 auto; padding: 0 16px; }
+main { flex: 1; padding: 40px 0 56px; }
+
+/* nav */
+.crumbs { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin-bottom: 28px; font-size: 14px; color: var(--muted); }
+.crumbs a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; max-width: 70%; }
+.crumbs a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs a:hover { color: var(--text); }
+.brand { font-weight: 600; color: var(--text); letter-spacing: -.01em; display: inline-flex; align-items: center; gap: 8px; }
+.brand svg { width: 18px; height: 18px; }
+
+h1, .title {
+  font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; margin: 0 0 6px;
+}
+.title { width: 100%; border: 0; background: transparent; padding: 0; outline: none; }
+.title::placeholder { color: var(--faint); }
+.lead { color: var(--muted); margin: 0 0 28px; font-size: 15px; }
+
+/* buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 42px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); text-decoration: none; font-size: 15px; font-weight: 500;
+  transition: background .15s, border-color .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--hover); }
+.btn:active { transform: scale(.98); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn.primary:hover { opacity: .88; }
+.btn[aria-disabled="true"], .btn:disabled { opacity: .4; pointer-events: none; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 0 12px; }
+.btn.ghost:hover { color: var(--text); background: var(--hover); }
+.btn.danger:hover { color: var(--danger); }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; align-items: center; }
+.actions .spacer { flex: 1; }
+.hint { font-size: 13px; color: var(--faint); margin-top: 12px; }
+
+/* home lists */
+.lists { list-style: none; margin: 0 0 8px; padding: 0; border-top: 1px solid var(--line); }
+.lists li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.lists a { flex: 1; min-width: 0; text-decoration: none; padding: 16px 4px; display: block; }
+.lists .name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lists .meta { font-size: 13px; color: var(--muted); }
+.lists a:hover .name { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--faint); }
+.icon-btn {
+  width: 32px; height: 32px; flex: none; border-radius: 8px; border: 0; background: transparent; color: var(--faint);
+  display: inline-flex; align-items: center; justify-content: center; transition: color .15s, background .15s, opacity .15s;
+}
+.icon-btn:hover { color: var(--danger); background: var(--hover); }
+.icon-btn svg { width: 16px; height: 16px; }
+@media (hover: hover) {
+  .lists li .icon-btn, .items li .icon-btn { opacity: 0; }
+  .lists li:hover .icon-btn, .items li:hover .icon-btn, .icon-btn:focus-visible { opacity: 1; }
+}
+.empty { padding: 36px 0 20px; color: var(--muted); }
+.empty p { margin: 0 0 4px; }
+
+/* edit */
+.add {
+  display: flex; align-items: center; gap: 10px; margin-top: 24px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px 4px 4px 16px;
+  box-shadow: var(--shadow); transition: border-color .15s;
+}
+.add:focus-within { border-color: var(--muted); }
+.add input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; height: 42px; }
+.add input::placeholder { color: var(--faint); }
+.add .btn { height: 36px; padding: 0 14px; font-size: 14px; }
+.items { list-style: none; margin: 16px 0 0; padding: 0; counter-reset: it; }
+.items li { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); counter-increment: it; }
+.items li::before { content: counter(it); width: 22px; flex: none; text-align: right; font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.items input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 12px 0; outline: none; }
+.items li:focus-within { border-bottom-color: var(--muted); }
+.count { font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+/* compare */
+.progress-meta { font-variant-numeric: tabular-nums; }
+.progress { height: 3px; background: var(--line); border-radius: 3px; overflow: hidden; margin: -16px 0 40px; }
+.progress span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
+.q { text-align: center; color: var(--muted); font-size: 15px; margin: 0 0 20px; }
+.duel { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
+.or { align-self: center; font-size: 13px; color: var(--faint); }
+.card {
+  position: relative; min-height: 180px; padding: 28px 22px 40px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 19px; line-height: 1.35; font-weight: 550; letter-spacing: -.01em;
+  overflow-wrap: anywhere; transition: border-color .15s, transform .12s, background .15s;
+}
+.card:hover { border-color: var(--muted); }
+.card:active { transform: scale(.985); }
+.card.picked { border-color: var(--accent); background: var(--hover); transform: scale(.985); }
+.card.faded { opacity: .45; }
+.card kbd { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); }
+kbd {
+  font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint);
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 3px 6px; background: var(--bg);
+}
+@media (hover: none) { kbd { display: none; } }
+.duel-anim { animation: in .22s ease; }
+@keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.sub { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+.sub .btn { height: 36px; font-size: 14px; }
+.sub kbd { margin-left: 2px; }
+.notice {
+  margin: 32px 0 0; padding: 16px 18px; border-radius: 12px; border: 1px dashed var(--line);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 14px; color: var(--muted);
+}
+.notice .btn { height: 36px; font-size: 14px; }
+
+/* results */
+.ranking { list-style: none; margin: 24px 0 0; padding: 0; }
+.ranking li { display: grid; grid-template-columns: 28px 1fr auto; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.ranking li:first-child { border-top: 1px solid var(--line); }
+.rank { font-size: 13px; color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
+.ranking .text { overflow-wrap: anywhere; font-weight: 500; }
+.ranking li:nth-child(-n+3) .text { font-weight: 600; }
+.bar { height: 4px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 4px; background: var(--bar); }
+.ranking li:first-child .bar span { background: var(--bar-top); }
+.score { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 17px; text-align: right; min-width: 52px; }
+.score small { display: block; font-size: 11px; font-weight: 400; color: var(--faint); }
+
+/* footer */
+footer { padding: 24px 0 32px; font-size: 13px; color: var(--faint); }
+footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+footer button { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+footer button:hover { color: var(--text); }
+footer .links { display: flex; gap: 14px; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
+  background: var(--accent); color: var(--accent-text); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+  transition: opacity .2s, transform .2s; box-shadow: var(--shadow); max-width: calc(100% - 32px);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 560px) {
+  main { padding-top: 24px; }
+  h1, .title { font-size: 24px; }
+  .duel { grid-template-columns: 1fr; gap: 10px; }
+  .card { min-height: 120px; padding: 24px 18px; font-size: 18px; }
+  .or { justify-self: center; }
+  .actions .btn { flex: 1; }
+  .actions .spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<main><div class="wrap" id="app"></div></main>
+<footer>
+  <div class="wrap">
+    <span>Data is stored locally in this browser</span>
+    <span class="links">
+      <button type="button" data-act="export">Export</button>
+      <button type="button" data-act="import">Import</button>
+    </span>
+  </div>
+</footer>
+<input type="file" id="file" accept="application/json,.json" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- storage ---------- */
+  const KEY = 'priorities.v1';
+  const LEGACY_KEY = 'priorytety.v1';
+  const START = 1000;
+  const K = 32;
+
+  let db = load();
+
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY));
+      if (d && Array.isArray(d.lists)) return d;
+    } catch (e) {}
+    return { lists: [] };
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(db)); }
+    catch (e) { toast('Could not save data in this browser'); }
+  }
+  function touch(list) { list.updated = Date.now(); save(); }
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const $ = s => document.querySelector(s);
+
+  /* ---------- elo ---------- */
+  function compute(list) {
+    const r = {}, s = {};
+    for (const it of list.items) { r[it.id] = START; s[it.id] = { w: 0, l: 0, d: 0, n: 0 }; }
+    for (const h of list.history) {
+      if (!(h.a in r) || !(h.b in r)) continue;
+      const ea = 1 / (1 + Math.pow(10, (r[h.b] - r[h.a]) / 400));
+      const sa = h.w === 'a' ? 1 : h.w === 'b' ? 0 : 0.5;
+      const delta = K * (sa - ea);
+      r[h.a] += delta; r[h.b] -= delta;
+      s[h.a].n++; s[h.b].n++;
+      if (sa === 1) { s[h.a].w++; s[h.b].l++; }
+      else if (sa === 0) { s[h.b].w++; s[h.a].l++; }
+      else { s[h.a].d++; s[h.b].d++; }
+    }
+    return { r, s };
+  }
+
+  function target(list) {
+    const n = list.items.length;
+    if (n < 2) return 0;
+    return Math.max(n - 1, Math.ceil(n * Math.log2(n)));
+  }
+
+  const pairKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+
+  function nextPair(list) {
+    const items = list.items;
+    if (items.length < 2) return null;
+    const { r, s } = compute(list);
+    const seen = new Map();
+    for (const h of list.history) { const k = pairKey(h.a, h.b); seen.set(k, (seen.get(k) || 0) + 1); }
+    const last = list.history[list.history.length - 1];
+    const lastSet = new Set(last && items.length >= 4 ? [last.a, last.b] : []);
+
+    // first: fewest comparisons, avoid items from the previous pair
+    let a = null, best = Infinity;
+    for (const it of items) {
+      const score = s[it.id].n + Math.random() * 0.9 + (lastSet.has(it.id) ? 100 : 0);
+      if (score < best) { best = score; a = it.id; }
+    }
+    // second: similar rating, rarely compared pair
+    let b = null; best = Infinity;
+    for (const it of items) {
+      if (it.id === a) continue;
+      const k = pairKey(a, it.id);
+      const score = Math.abs(r[a] - r[it.id]) / 40
+        + (seen.get(k) || 0) * 4
+        + s[it.id].n * 0.35
+        + (lastSet.has(it.id) ? 6 : 0)
+        + (last && k === pairKey(last.a, last.b) ? 50 : 0)
+        + Math.random() * 1.5;
+      if (score < best) { best = score; b = it.id; }
+    }
+    return Math.random() < 0.5 ? [a, b] : [b, a];
+  }
+
+  /* ---------- routing ---------- */
+  function route() {
+    const p = location.hash.replace(/^#\/?/, '').split('/');
+    if (p[0] === 'l' && p[1]) {
+      const list = db.lists.find(l => l.id === p[1]);
+      if (list) return { view: p[2] || 'edit', list };
+    }
+    return { view: 'home' };
+  }
+  const go = h => { if (location.hash === h) render(); else location.hash = h; };
+
+  /* ---------- ui helpers ---------- */
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+  }
+  const ICON_X = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+  const ICON_BACK = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg>';
+  const LOGO = '<svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="currentColor"/><rect x="8" y="8" width="16" height="3" rx="1.5" fill="var(--bg)"/><rect x="8" y="14.5" width="11" height="3" rx="1.5" fill="var(--bg)" opacity=".7"/><rect x="8" y="21" width="6" height="3" rx="1.5" fill="var(--bg)" opacity=".45"/></svg>';
+
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const nItems = n => plural(n, 'item', 'items');
+  const nComps = n => plural(n, 'comparison', 'comparisons');
+
+  function fmtDate(t) {
+    if (!t) return '';
+    const d = new Date(t), now = new Date();
+    const same = d.toDateString() === now.toDateString();
+    return same ? 'today, ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+  }
+
+  /* ---------- views ---------- */
+  const app = $('#app');
+  let pair = null;      // current pair in compare mode
+  let pairList = null;  // id of the list the pair belongs to
+  let busy = false;
+
+  function render(opts = {}) {
+    const rt = route();
+    document.title = rt.list ? `${rt.list.name || 'Untitled'} · Priorities` : 'Priorities';
+    if (rt.view === 'edit') renderEdit(rt.list, opts);
+    else if (rt.view === 'compare') renderCompare(rt.list, opts);
+    else if (rt.view === 'results') renderResults(rt.list);
+    else renderHome();
+  }
+
+  function renderHome() {
+    const lists = [...db.lists].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    app.innerHTML = `
+      <div class="crumbs"><span class="brand">${LOGO}Priorities</span></div>
+      <h1>Your lists</h1>
+      ${lists.length ? `
+        <p class="lead">Pick up where you left off, or start something new.</p>
+        <ul class="lists">
+          ${lists.map(l => `
+            <li>
+              <a href="#/l/${l.id}">
+                <div class="name">${esc(l.name || 'Untitled')}</div>
+                <div class="meta">${nItems(l.items.length)} · ${nComps(l.history.length)} · ${fmtDate(l.updated)}</div>
+              </a>
+              <button class="icon-btn" data-act="del-list" data-id="${l.id}" title="Delete list" aria-label="Delete list">${ICON_X}</button>
+            </li>`).join('')}
+        </ul>` : `
+        <div class="empty">
+          <p>Write down tasks, ideas or goals.</p>
+          <p>Then compare them in pairs — an Elo rating sorts them from most important down.</p>
+        </div>`}
+      <div class="actions"><button class="btn primary" data-act="new-list">New list</button></div>`;
+  }
+
+  function renderEdit(list, opts) {
+    const n = list.items.length;
+    const started = list.history.length > 0;
+    app.innerHTML = `
+      <div class="crumbs"><a href="#/">${ICON_BACK}<span>Lists</span></a></div>
+      <input class="title" id="title" value="${esc(list.name)}" placeholder="List name" aria-label="List name" autocomplete="off">
+      <form class="add" id="add-form" autocomplete="off">
+        <input id="add" placeholder="Add an item and press Enter" aria-label="New item" enterkeyhint="done">
+        <button class="btn" type="submit">Add</button>
+      </form>
+      <ol class="items" id="items">
+        ${list.items.map(it => `
+          <li data-id="${it.id}">
+            <input value="${esc(it.text)}" data-item="${it.id}" aria-label="Item">
+            <button class="icon-btn" type="button" data-act="del-item" data-id="${it.id}" title="Delete" aria-label="Delete">${ICON_X}</button>
+          </li>`).join('')}
+      </ol>
+      ${n ? `<div class="count">${nItems(n)}${started ? ' · ' + nComps(list.history.length) : ''}</div>` : `<p class="hint">Tip: paste several lines at once — each becomes a separate item.</p>`}
+      <div class="actions">
+        <a class="btn primary" href="#/l/${list.id}/compare" ${n < 2 ? 'aria-disabled="true" tabindex="-1"' : ''}>${started ? 'Continue comparing' : 'Start prioritizing'}</a>
+        ${started ? `<a class="btn" href="#/l/${list.id}/results">Results</a>` : ''}
+      </div>
+      ${n === 1 ? '<p class="hint">Add at least 2 items to start.</p>' : ''}`;
+
+    const focusId = opts.focus || (n === 0 && !list.name ? 'title' : 'add');
+    const el = document.getElementById(focusId);
+    if (el && (opts.focus || n === 0)) { el.focus(); if (focusId === 'title') el.select(); }
+  }
+
+  function renderCompare(list, opts) {
+    if (list.items.length < 2) { go(`#/l/${list.id}`); return; }
+    const ids = new Set(list.items.map(i => i.id));
+    if (!pair || pairList !== list.id || !ids.has(pair[0]) || !ids.has(pair[1])) { pair = nextPair(list); pairList = list.id; }
+    const byId = id => list.items.find(i => i.id === id);
+    const [a, b] = pair.map(byId);
+    const done = list.history.length, tgt = target(list);
+    const pct = Math.min(100, Math.round(done / tgt * 100));
+    app.innerHTML = `
+      <div class="crumbs">
+        <a href="#/l/${list.id}">${ICON_BACK}<span>${esc(list.name || 'Untitled')}</span></a>
+        <span class="progress-meta" title="Comparisons done / recommended">${done} / ${tgt}</span>
+      </div>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${tgt}" aria-valuenow="${Math.min(done, tgt)}"><span style="width:${pct}%"></span></div>
+      <p class="q">Which matters more?</p>
+      <div class="duel ${opts.anim ? 'duel-anim' : ''}" id="duel">
+        <button class="card" data-act="pick" data-side="0">${esc(a.text)}<kbd>←</kbd></button>
+        <span class="or">or</span>
+        <button class="card" data-act="pick" data-side="1">${esc(b.text)}<kbd>→</kbd></button>
+      </div>
+      <div class="sub">
+        <button class="btn ghost" data-act="draw">About equal <kbd>↓</kbd></button>
+        <button class="btn ghost" data-act="undo" ${done ? '' : 'disabled'}>Undo <kbd>Z</kbd></button>
+      </div>
+      ${done >= tgt
+        ? `<div class="notice"><span>The ranking is stable now. Keep comparing for extra precision.</span><a class="btn primary" href="#/l/${list.id}/results">See results</a></div>`
+        : `<div class="sub"><a class="btn ghost" href="#/l/${list.id}/results">Finish and see results</a></div>`}`;
+  }
+
+  function sortedResults(list) {
+    const { r, s } = compute(list);
+    return list.items
+      .map(it => ({ ...it, r: r[it.id], s: s[it.id] }))
+      .sort((x, y) => y.r - x.r || y.s.w - x.s.w || x.text.localeCompare(y.text));
+  }
+
+  function renderResults(list) {
+    const rows = sortedResults(list);
+    const max = Math.max(...rows.map(x => x.r), START), min = Math.min(...rows.map(x => x.r), START);
+    const span = max - min || 1;
+    app.innerHTML = `
+      <div class="crumbs">
+        <a href="#/l/${list.id}">${ICON_BACK}<span>${esc(list.name || 'Untitled')}</span></a>
+      </div>
+      <h1>Results</h1>
+      <p class="lead">${list.history.length ? `Based on ${nComps(list.history.length)}.` : 'No comparisons yet — every item has the starting score.'}</p>
+      <ol class="ranking">
+        ${rows.map((x, i) => `
+          <li>
+            <span class="rank">${i + 1}</span>
+            <div>
+              <div class="text">${esc(x.text)}</div>
+              <div class="bar"><span style="width:${Math.max(3, Math.round((x.r - min) / span * 100))}%"></span></div>
+            </div>
+            <span class="score" title="${x.s.w} wins · ${x.s.l} losses · ${x.s.d} draws">${Math.round(x.r)}<small>${x.s.w}–${x.s.l}${x.s.d ? '–' + x.s.d : ''}</small></span>
+          </li>`).join('')}
+      </ol>
+      <div class="actions">
+        ${list.items.length >= 2 ? `<a class="btn primary" href="#/l/${list.id}/compare">Keep comparing</a>` : ''}
+        <button class="btn" data-act="copy">Copy list</button>
+        <span class="spacer"></span>
+        ${list.history.length ? '<button class="btn ghost danger" data-act="reset">Reset ranking</button>' : ''}
+      </div>`;
+  }
+
+  /* ---------- actions ---------- */
+  function current() { return route().list; }
+
+  function addItems(list, raw) {
+    const lines = raw.split(/\r?\n/).map(s => s.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim()).filter(Boolean);
+    if (!lines.length) return 0;
+    for (const text of lines) list.items.push({ id: uid(), text, created: Date.now() });
+    touch(list);
+    return lines.length;
+  }
+
+  function pick(side) {
+    const list = current();
+    if (!list || !pair || busy) return;
+    busy = true;
+    const cards = app.querySelectorAll('.card');
+    if (side === 'draw') cards.forEach(c => c.classList.add('faded'));
+    else { cards[side].classList.add('picked'); cards[1 - side].classList.add('faded'); }
+    const w = side === 'draw' ? 'd' : side === 0 ? 'a' : 'b';
+    list.history.push({ a: pair[0], b: pair[1], w, t: Date.now() });
+    touch(list);
+    setTimeout(() => {
+      pair = nextPair(list); pairList = list.id; busy = false;
+      render({ anim: true });
+    }, 160);
+  }
+
+  function undo() {
+    const list = current();
+    if (!list || !list.history.length || busy) return;
+    const h = list.history.pop();
+    touch(list);
+    pair = [h.a, h.b]; pairList = list.id;
+    render({ anim: true });
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
+      ta.remove(); return ok;
+    }
+  }
+
+  document.addEventListener('click', async e => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const act = el.dataset.act;
+    const list = current();
+
+    if (act === 'new-list') {
+      const l = { id: uid(), name: '', items: [], history: [], created: Date.now(), updated: Date.now() };
+      db.lists.push(l); save();
+      go(`#/l/${l.id}`);
+    }
+    else if (act === 'del-list') {
+      const l = db.lists.find(x => x.id === el.dataset.id);
+      if (l && confirm(`Delete “${l.name || 'Untitled'}”? This cannot be undone.`)) {
+        db.lists = db.lists.filter(x => x !== l); save(); render();
+      }
+    }
+    else if (act === 'del-item' && list) {
+      const id = el.dataset.id;
+      const li = el.closest('li');
+      const next = li.nextElementSibling || li.previousElementSibling;
+      list.items = list.items.filter(i => i.id !== id);
+      list.history = list.history.filter(h => h.a !== id && h.b !== id);
+      touch(list);
+      render();
+      const target = next && app.querySelector(`[data-item="${next.dataset.id}"]`);
+      (target || $('#add'))?.focus();
+    }
+    else if (act === 'pick') pick(+el.dataset.side);
+    else if (act === 'draw') pick('draw');
+    else if (act === 'undo') undo();
+    else if (act === 'copy' && list) {
+      const rows = sortedResults(list);
+      const txt = (list.name ? list.name + '\n\n' : '') + rows.map((x, i) => `${i + 1}. ${x.text} — ${Math.round(x.r)}`).join('\n');
+      toast(await copyText(txt) ? 'Copied to clipboard' : 'Could not copy');
+    }
+    else if (act === 'reset' && list) {
+      if (confirm('Clear all comparisons for this list? Items stay, the ranking starts over.')) {
+        list.history = []; pair = null; touch(list); render(); toast('Ranking reset');
+      }
+    }
+    else if (act === 'export') {
+      const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `priorities-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    else if (act === 'import') $('#file').click();
+  });
+
+  $('#file').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data || !Array.isArray(data.lists)) throw 0;
+      let added = 0, replaced = 0;
+      for (const l of data.lists) {
+        if (!l || !l.id || !Array.isArray(l.items) || !Array.isArray(l.history)) continue;
+        const i = db.lists.findIndex(x => x.id === l.id);
+        if (i >= 0) { db.lists[i] = l; replaced++; } else { db.lists.push(l); added++; }
+      }
+      save(); pair = null; render();
+      toast(`Imported: ${added} new, ${replaced} updated`);
+    } catch (_) { toast('Not a valid export file'); }
+  });
+
+  document.addEventListener('submit', e => {
+    if (e.target.id !== 'add-form') return;
+    e.preventDefault();
+    const list = current(), input = $('#add');
+    if (list && addItems(list, input.value)) render({ focus: 'add' });
+    else input.focus();
+  });
+
+  document.addEventListener('paste', e => {
+    if (e.target.id !== 'add') return;
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!/\n/.test(text.trim())) return;
+    e.preventDefault();
+    const list = current();
+    const n = list && addItems(list, text);
+    if (n) { render({ focus: 'add' }); toast(`Added ${nItems(n)}`); }
+  });
+
+  document.addEventListener('input', e => {
+    const list = current();
+    if (!list) return;
+    if (e.target.id === 'title') { list.name = e.target.value; document.title = `${list.name || 'Untitled'} · Priorities`; touch(list); }
+    else if (e.target.dataset.item) {
+      const it = list.items.find(i => i.id === e.target.dataset.item);
+      if (it) { it.text = e.target.value; touch(list); }
+    }
+  });
+
+  document.addEventListener('focusout', e => {
+    const id = e.target.dataset && e.target.dataset.item;
+    if (!id || e.target.value.trim()) return;
+    const list = current();
+    if (!list) return;
+    // emptied item = delete
+    setTimeout(() => {
+      if (document.activeElement && document.activeElement.dataset.item === id) return;
+      list.items = list.items.filter(i => i.id !== id);
+      list.history = list.history.filter(h => h.a !== id && h.b !== id);
+      touch(list); render();
+    }, 0);
+  });
+
+  document.addEventListener('keydown', e => {
+    const tag = e.target.tagName;
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+
+    if (typing) {
+      if (e.key === 'Enter' && (e.target.id === 'title' || e.target.dataset.item)) {
+        e.preventDefault(); $('#add')?.focus();
+      }
+      if (e.key === 'ArrowDown' && e.target.dataset.item) {
+        e.preventDefault();
+        const nx = e.target.closest('li').nextElementSibling;
+        nx && nx.querySelector('input').focus();
+      }
+      if (e.key === 'ArrowUp' && e.target.dataset.item) {
+        e.preventDefault();
+        const pv = e.target.closest('li').previousElementSibling;
+        (pv ? pv.querySelector('input') : $('#add')).focus();
+      }
+      if (e.key === 'ArrowDown' && e.target.id === 'add') {
+        const first = app.querySelector('[data-item]');
+        if (first) { e.preventDefault(); first.focus(); }
+      }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (route().view !== 'compare') return;
+    if (e.key === 'ArrowLeft' || e.key === '1') { e.preventDefault(); pick(0); }
+    else if (e.key === 'ArrowRight' || e.key === '2') { e.preventDefault(); pick(1); }
+    else if (e.key === 'ArrowDown' || e.key === '0' || e.key === '=') { e.preventDefault(); pick('draw'); }
+    else if (e.key === 'z' || e.key === 'Z' || e.key === 'Backspace') { e.preventDefault(); undo(); }
+  });
+
+  // sync between browser tabs
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY) return;
+    db = load();
+    const a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT')) render();
+  });
+
+  window.addEventListener('hashchange', () => { busy = false; render(); window.scrollTo(0, 0); });
+  render();
+})();
+</script>
+</body>
+</html>
